@@ -1,0 +1,5 @@
+django-admin startproject config .
+manage.py spythontartapp assignments
+
+
+ 
