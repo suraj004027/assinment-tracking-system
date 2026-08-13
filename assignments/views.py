@@ -1,33 +1,108 @@
+"""
+views.py — the "brain" of the assignments app.
+
+A Django VIEW is just a Python function that receives a request
+(what the user asked for) and returns a response (a web page).
+
+For this page we write a plain FUNCTION-BASED VIEW — the simplest
+kind of view — because we want every concept to be easy to see.
+"""
+
+from django.shortcuts import redirect, render
+
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
+from .forms import AssignmentForm
 from .models import Assignment
 from .serializers import AssignmentSerializer
 
 
+def assignment_list(request):
+    """
+    Show the "add assignment" form AND the list of assignments on ONE page.
+
+    HTTP has two common "methods" (kinds of requests):
+
+      * GET  -> "give me the page"   (used when you type a URL / refresh)
+      * POST -> "here is form data, please save it"
+                (used when you submit a <form method="post">)
+
+    So this one function handles BOTH jobs:
+      1. GET  -> build an empty form and show the page.
+      2. POST -> fill the form with what the student typed, check it,
+                 save it to the database, then send the browser back
+                 to the page so the new assignment appears.
+    """
+
+    # ---- 1. Did the user submit the form? -------------------------
+    if request.method == "POST":
+        # Build a form and pour the submitted data into it.
+        # Django checks every field for us (required fields,
+        # valid dates, lengths, ...) when we call is_valid().
+        form = AssignmentForm(request.POST)
+
+        if form.is_valid():
+            # The data passed all the checks -> save a new row.
+            form.save()
+
+            # POST/Redirect/GET pattern: after saving, tell the browser
+            # "go look at the page again". This stops a page refresh
+            # from accidentally saving the same assignment twice!
+            return redirect("assignments:assignment_list")
+
+        # If the form is NOT valid we fall through and re-render the
+        # page. Django fills form.errors so the template can show the
+        # student exactly what went wrong.
+
+    else:
+        # ---- 2. Normal page visit (GET) ----------------------------
+        # A fresh, empty form, ready for the student to fill in.
+        form = AssignmentForm()
+
+    # Pull every assignment out of the database. Newest first,
+    # because that ordering is set on the model's Meta class.
+    assignments = Assignment.objects.all()
+
+    # render() = "fill this template with this data and send it back".
+    return render(
+        request,
+        "assignments/assignment_list.html",
+        {
+            "form": form,                 # the form (empty, or with errors)
+            "assignments": assignments,   # every row in the database
+        },
+    )
+
+
+# ---------------------------------------------------------------------
+# Below: the existing REST API (Django REST Framework).
+# It is a separate, JSON-based way to talk to the SAME data.
+# The HTML page above is for humans; the API below is for apps.
+# ---------------------------------------------------------------------
 class AssignmentViewSet(viewsets.GenericViewSet):
     """
-    Complete CRUD API for assignments.
+    The complete CRUD API for assignments, written out explicitly.
 
-    GET     /api/assignments/       -> List all assignments
-    POST    /api/assignments/       -> Create an assignment
-    GET     /api/assignments/{id}/  -> Get one assignment
-    PUT     /api/assignments/{id}/  -> Update an assignment
-    PATCH   /api/assignments/{id}/  -> Partially update an assignment
-    DELETE  /api/assignments/{id}/  -> Delete an assignment
+    GET    /api/assignments/          -> list all
+    POST   /api/assignments/          -> create one
+    GET    /api/assignments/{id}/     -> fetch one
+    PUT    /api/assignments/{id}/     -> fully replace one
+    PATCH  /api/assignments/{id}/     -> partially update one
+    DELETE /api/assignments/{id}/     -> delete one
     """
 
     queryset = Assignment.objects.all()
     serializer_class = AssignmentSerializer
 
-    # GET /api/assignments/
+    # GET /assignments/
     def list(self, request):
-        """Return all assignments."""
+        """Return every assignment."""
         assignments = Assignment.objects.all()
         serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
 
-    # POST /api/assignments/
+    # POST /assignments/
     def create(self, request):
         """Create a new assignment."""
         serializer = AssignmentSerializer(data=request.data)
@@ -44,28 +119,30 @@ class AssignmentViewSet(viewsets.GenericViewSet):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # GET /api/assignments/{id}/
+    # GET /assignments/{id}/
     def retrieve(self, request, pk=None):
-        """Return a single assignment."""
+        """Return one assignment."""
         try:
             assignment = Assignment.objects.get(pk=pk)
+
         except Assignment.DoesNotExist:
             return Response(
-                {"error": "Assignment not found."},
+                {"detail": "Assignment not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
         serializer = AssignmentSerializer(assignment)
         return Response(serializer.data)
 
-    # PUT /api/assignments/{id}/
+    # PUT /assignments/{id}/
     def update(self, request, pk=None):
-        """Fully update an assignment."""
+        """Update an existing assignment."""
         try:
             assignment = Assignment.objects.get(pk=pk)
+
         except Assignment.DoesNotExist:
             return Response(
-                {"error": "Assignment not found."},
+                {"detail": "Assignment not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -83,14 +160,15 @@ class AssignmentViewSet(viewsets.GenericViewSet):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # PATCH /api/assignments/{id}/
+    # PATCH /assignments/{id}/
     def partial_update(self, request, pk=None):
-        """Partially update an assignment."""
+        """Partially update an existing assignment."""
         try:
             assignment = Assignment.objects.get(pk=pk)
+
         except Assignment.DoesNotExist:
             return Response(
-                {"error": "Assignment not found."},
+                {"detail": "Assignment not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -109,20 +187,20 @@ class AssignmentViewSet(viewsets.GenericViewSet):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # DELETE /api/assignments/{id}/
+    # DELETE /assignments/{id}/
     def destroy(self, request, pk=None):
-        """Delete an assignment."""
+        """Delete an existing assignment."""
         try:
             assignment = Assignment.objects.get(pk=pk)
+
         except Assignment.DoesNotExist:
             return Response(
-                {"error": "Assignment not found."},
+                {"detail": "Assignment not found."},
                 status=status.HTTP_404_NOT_FOUND
             )
 
         assignment.delete()
 
         return Response(
-            {"message": "Assignment deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
